@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+ #!/usr/bin/env python3
 # coding: utf-8
 # Copyright 2016 Abram Hindle, https://github.com/tywtyw2002, and https://github.com/treedust
 # 
@@ -41,13 +41,17 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        code = int(data.splitlines()[0].split(' ')[1])
+        return code
+
 
     def get_headers(self,data):
-        return None
+        headers = "\r\n".join(data.split('\r\n\r\n')[0].splitlines()[1:-1])
+        return headers
 
     def get_body(self, data):
-        return None
+        body = data.split('\r\n\r\n')[1]
+        return body
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -68,13 +72,68 @@ class HTTPClient(object):
         return buffer.decode('utf-8')
 
     def GET(self, url, args=None):
-        code = 500
-        body = ""
+        # process port, path and hostname
+        result = urllib.parse.urlparse(url)
+        port = result.port        
+        path = result.path
+        hostname = result.hostname
+
+        if (not result.path):
+            path = "/"
+        if (not port):
+            port = 80
+        
+        # generate a GET request
+        request = f"GET {path} HTTP/1.1\r\nHost: {hostname}\r\nConnection: Closed\r\n\r\n"
+
+        # do a GET request
+        self.connect(hostname, port)
+        self.sendall(request)
+        self.socket.shutdown(socket.SHUT_WR)
+
+        # receive data
+        data = self.recvall(self.socket)
+        code = self.get_code(data)
+        body = self.get_body(data)
+
+        # always close 
+        self.close()
+
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
-        code = 500
-        body = ""
+        # process port, path and hostname
+        result = urllib.parse.urlparse(url)
+        port = result.port        
+        path = result.path
+        hostname = result.hostname
+
+        if (not path):
+            path = "/"
+        if (not port):
+            port = 80
+        
+        # generate a POST request
+        if (not args):
+            request = f"POST {path} HTTP/1.1\r\nHost: {hostname}\r\nConnection: Closed\r\nContent-Length: 0\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\n"
+        else:
+            argument = urllib.parse.urlencode(args)
+            size = str(len(argument))
+            request = f"POST {path} HTTP/1.1\r\nHost: {hostname}\r\nConnection: Closed\r\nContent-Length: {size}\r\nContent-Type: application/x-www-form-urlencoded\r\n\r\n{argument}" 
+
+        # do a POST request
+        self.connect(hostname, port)
+        self.sendall(request)
+        self.socket.shutdown(socket.SHUT_WR)
+
+        # receive data
+        response = self.recvall(self.socket)
+        code = self.get_code(response)
+        body = self.get_body(response)
+        
+        # always close
+        self.close()
+        
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
